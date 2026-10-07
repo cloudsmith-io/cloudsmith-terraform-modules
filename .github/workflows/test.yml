@@ -1,0 +1,82 @@
+name: Test
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - "**"
+  # Exercise API and upstream recipe changes even without a repository commit.
+  schedule:
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# The tests share one Cloudsmith workspace, so only one run can use it at a time.
+concurrency:
+  group: cloudsmith-test-workspace
+  cancel-in-progress: false
+
+jobs:
+  terraform-test:
+    name: Integration tests
+    # Pull requests from forks and Dependabot cannot read the repository secrets.
+    if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    env:
+      TF_VAR_workspace: ${{ vars.CLOUDSMITH_TEST_WORKSPACE }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The action exports the API key as CLOUDSMITH_API_KEY for the Terraform provider.
+      - uses: cloudsmith-io/cloudsmith-cli-action@69e169e2ad9bc9a1599c2dff464061a00fe9f8ba # v3.1.1
+        with:
+          api-key: ${{ secrets.CLOUDSMITH_TEST_API_KEY }}
+          export-auth-token: true
+
+      - uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
+        with:
+          cache: true
+
+      - name: Prepare caches
+        run: |
+          mkdir -p "${RUNNER_TEMP}/terraform-plugin-cache"
+          echo "TF_PLUGIN_CACHE_DIR=${RUNNER_TEMP}/terraform-plugin-cache" >> "${GITHUB_ENV}"
+          echo "UV_CACHE_DIR=${RUNNER_TEMP}/uv-cache" >> "${GITHUB_ENV}"
+
+      - name: Cache Python dependencies
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ${{ env.UV_CACHE_DIR }}
+          key: uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('uv.lock', 'mise.lock') }}
+
+      - name: Cache Terraform providers
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ${{ env.TF_PLUGIN_CACHE_DIR }}
+          key: terraform-providers-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/*.tf') }}
+          restore-keys: |
+            terraform-providers-${{ runner.os }}-${{ runner.arch }}-
+
+      # terraform test reads the test files in a directory and in its tests subdirectory.
+      - name: Run terraform test in each directory with test files
+        run: |
+          set -euo pipefail
+          find modules -name '*.tftest.hcl' -not -path '*/.terraform/*' -not -path '*/tests/unit/*' -exec dirname {} \; | sed 's#/tests$##' | sort -u > "${RUNNER_TEMP}/test-directories"
+          while read -r directory; do
+            echo "::group::${directory}"
+            terraform -chdir="${directory}" init -input=false -no-color
+            terraform -chdir="${directory}" test -no-color
+            echo "::endgroup::"
+          done < "${RUNNER_TEMP}/test-directories"
+
+      - name: Check cooldown formats and package downloads
+        run: uv run --locked pytest -m integration
