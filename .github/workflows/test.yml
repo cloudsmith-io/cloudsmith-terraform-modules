@@ -1,0 +1,59 @@
+name: Test
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - "**"
+  # Cloudsmith can change without a commit in this repository. A daily run makes sure that the cooldown proof stays true.
+  schedule:
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# The tests share one Cloudsmith workspace, so only one run can use it at a time.
+concurrency:
+  group: cloudsmith-test-workspace
+  cancel-in-progress: false
+
+jobs:
+  terraform-test:
+    name: Terraform tests
+    # Pull requests from forks cannot request a GitHub OIDC token.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      TF_VAR_workspace: ${{ vars.CLOUDSMITH_TEST_WORKSPACE }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The action exchanges the GitHub OIDC token for a short-lived Cloudsmith token, and exports it as CLOUDSMITH_API_KEY for the Terraform provider.
+      - uses: cloudsmith-io/cloudsmith-cli-action@69e169e2ad9bc9a1599c2dff464061a00fe9f8ba # v3.1.1
+        with:
+          oidc-namespace: ${{ vars.CLOUDSMITH_TEST_WORKSPACE }}
+          oidc-service-slug: ${{ vars.CLOUDSMITH_TEST_SERVICE_SLUG }}
+          export-auth-token: true
+
+      - uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
+
+      # terraform test reads the test files in a directory and in its tests subdirectory.
+      - name: Run terraform test in each directory with test files
+        run: |
+          set -euo pipefail
+          find modules -name '*.tftest.hcl' -not -path '*/.terraform/*' -exec dirname {} \; | sed 's#/tests$##' | sort -u > "${RUNNER_TEMP}/test-directories"
+          while read -r directory; do
+            echo "::group::${directory}"
+            terraform -chdir="${directory}" init -input=false -no-color
+            terraform -chdir="${directory}" test -no-color
+            echo "::endgroup::"
+          done < "${RUNNER_TEMP}/test-directories"

@@ -1,0 +1,4 @@
+* @cloudsmith-io/engineering
+
+# An approval from Cloudsmith Bot satisfies code owner review only for these files.
+/.github/workflows/ @cloudsmith-io/engineering @cloudsmith-bot
