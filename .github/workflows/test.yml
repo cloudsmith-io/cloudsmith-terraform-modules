@@ -23,13 +23,12 @@ concurrency:
 jobs:
   terraform-test:
     name: Terraform tests
-    # Pull requests from forks cannot request a GitHub OIDC token.
+    # Pull requests from forks cannot read the repository secrets.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     permissions:
       contents: read
-      id-token: write
     env:
       TF_VAR_workspace: ${{ vars.CLOUDSMITH_TEST_WORKSPACE }}
     steps:
@@ -37,11 +36,10 @@ jobs:
         with:
           persist-credentials: false
 
-      # The action exchanges the GitHub OIDC token for a short-lived Cloudsmith token, and exports it as CLOUDSMITH_API_KEY for the Terraform provider.
+      # The action exports the API key as CLOUDSMITH_API_KEY for the Terraform provider.
       - uses: cloudsmith-io/cloudsmith-cli-action@69e169e2ad9bc9a1599c2dff464061a00fe9f8ba # v3.1.1
         with:
-          oidc-namespace: ${{ vars.CLOUDSMITH_TEST_WORKSPACE }}
-          oidc-service-slug: ${{ vars.CLOUDSMITH_TEST_SERVICE_SLUG }}
+          api-key: ${{ secrets.CLOUDSMITH_TEST_API_KEY }}
           export-auth-token: true
 
       - uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
