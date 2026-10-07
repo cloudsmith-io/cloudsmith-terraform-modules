@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Cloudsmith Documentation
+    url: https://docs.cloudsmith.com/policy-management
+    about: Check the official Cloudsmith policy documentation
+  - name: Rego recipes
+    url: https://github.com/cloudsmith-io/rego-recipes
+    about: Report problems with the Rego of a recipe in the rego-recipes repository
+  - name: Cloudsmith Support
+    url: https://cloudsmith.io/support/
+    about: Contact Cloudsmith support for account-specific issues

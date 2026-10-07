@@ -1,0 +1,121 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions: {}
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    name: Release PRs and tags
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      releases: ${{ steps.release.outputs.releases_created == 'true' && toJSON(steps.release.outputs) || '{}' }}
+      paths_released: ${{ steps.release.outputs.paths_released || '[]' }}
+    steps:
+      # The bot token lets the release pull requests start the test workflows.
+      - id: release
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          token: ${{ secrets.CLOUDSMITH_BOT_PR_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  mirror:
+    name: Publish ${{ matrix.path }} to the Terraform and OpenTofu registries
+    needs: release-please
+    # Remove `false &&` after the mirror repository and the MODULE_MIRROR_TOKEN secret exist.
+    if: false && needs.release-please.outputs.paths_released != '[]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        path: ${{ fromJSON(needs.release-please.outputs.paths_released) }}
+    env:
+      MODULE_PATH: ${{ matrix.path }}
+      VERSION: ${{ fromJSON(needs.release-please.outputs.releases)[format('{0}--version', matrix.path)] }}
+      MIRROR_TOKEN: ${{ secrets.MODULE_MIRROR_TOKEN }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ fromJSON(needs.release-please.outputs.releases)[format('{0}--tag_name', matrix.path)] }}
+
+      - name: Stage the module
+        run: |
+          set -euo pipefail
+          module_name="$(basename "${MODULE_PATH}")"
+          {
+            echo "MIRROR_REPOSITORY=${GITHUB_REPOSITORY_OWNER}/terraform-cloudsmith-${module_name}"
+            echo "SOURCE_SHA=$(git rev-parse HEAD)"
+            echo "STAGING=${RUNNER_TEMP}/staging"
+          } >> "${GITHUB_ENV}"
+          mkdir -p "${RUNNER_TEMP}/staging"
+          rsync -a --exclude '.terraform/' --exclude '*.tfstate*' --exclude '*_override.tf*' --exclude '.terraform.lock.hcl' --exclude 'version.txt' "${MODULE_PATH}/" "${RUNNER_TEMP}/staging/"
+          cp LICENSE "${RUNNER_TEMP}/staging/LICENSE"
+          printf 'This repository is a read-only mirror. Contribute at https://github.com/%s/tree/main/%s.\n' "${GITHUB_REPOSITORY}" "${MODULE_PATH}" > "${RUNNER_TEMP}/staging/CONTRIBUTING.md"
+
+      - name: Push the release to the mirror repository
+        run: |
+          set -euo pipefail
+          auth_header="AUTHORIZATION: basic $(printf 'x-access-token:%s' "${MIRROR_TOKEN}" | base64 -w0)"
+          git -c http.extraheader="${auth_header}" clone "https://github.com/${MIRROR_REPOSITORY}.git" "${RUNNER_TEMP}/mirror"
+          rsync -a --delete --exclude '.git/' "${STAGING}/" "${RUNNER_TEMP}/mirror/"
+          cd "${RUNNER_TEMP}/mirror"
+          git config user.name "cloudsmith-bot"
+          git config user.email "cloudsmith-bot@users.noreply.github.com"
+          git add -A
+          git commit --allow-empty -m "chore(release): v${VERSION}" -m "Source: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${SOURCE_SHA}"
+          git tag "v${VERSION}"
+          git -c http.extraheader="${auth_header}" push --atomic origin HEAD "v${VERSION}"
+
+  cloudsmith:
+    name: Publish ${{ matrix.path }} to Cloudsmith
+    needs: release-please
+    if: needs.release-please.outputs.paths_released != '[]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        path: ${{ fromJSON(needs.release-please.outputs.paths_released) }}
+    env:
+      MODULE_PATH: ${{ matrix.path }}
+      VERSION: ${{ fromJSON(needs.release-please.outputs.releases)[format('{0}--version', matrix.path)] }}
+      CLOUDSMITH_WORKSPACE: ${{ vars.CLOUDSMITH_PUBLISH_WORKSPACE }}
+      CLOUDSMITH_REPOSITORY: ${{ vars.CLOUDSMITH_PUBLISH_REPOSITORY }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ fromJSON(needs.release-please.outputs.releases)[format('{0}--tag_name', matrix.path)] }}
+
+      - uses: cloudsmith-io/cloudsmith-cli-action@69e169e2ad9bc9a1599c2dff464061a00fe9f8ba # v3.1.1
+        with:
+          oidc-namespace: ${{ vars.CLOUDSMITH_PUBLISH_WORKSPACE }}
+          oidc-service-slug: ${{ vars.CLOUDSMITH_PUBLISH_SERVICE_SLUG }}
+
+      - name: Build and push the module archive
+        run: |
+          set -euo pipefail
+          archive="terraform-cloudsmith-$(basename "${MODULE_PATH}")-${VERSION}.tar.gz"
+          mkdir -p "${RUNNER_TEMP}/staging"
+          rsync -a --exclude '.terraform/' --exclude '*.tfstate*' --exclude '*_override.tf*' --exclude '.terraform.lock.hcl' --exclude 'version.txt' "${MODULE_PATH}/" "${RUNNER_TEMP}/staging/"
+          cp LICENSE "${RUNNER_TEMP}/staging/LICENSE"
+          tar -czf "${RUNNER_TEMP}/${archive}" -C "${RUNNER_TEMP}/staging" .
+          cloudsmith push terraform "${CLOUDSMITH_WORKSPACE}/${CLOUDSMITH_REPOSITORY}" "${RUNNER_TEMP}/${archive}"
