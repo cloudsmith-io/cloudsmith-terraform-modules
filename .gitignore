@@ -1,0 +1,39 @@
+# Terraform working directories and provider lock files.
+# Module repositories do not commit lock files, so callers choose the provider versions.
+.terraform/
+.terraform.lock.hcl
+
+# Terraform state can contain secrets.
+*.tfstate
+*.tfstate.*
+.terraform.tfstate.lock.info
+
+# Saved plans can contain secrets.
+*.tfplan
+tfplan
+
+# Local environment files contain secrets.
+.env
+.env.*
+
+# Variable files can contain secrets.
+*.tfvars
+*.tfvars.json
+
+# Local overrides.
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# CLI configuration and crash logs.
+.terraformrc
+terraform.rc
+crash.log
+crash.*.log
+
+# Editors and operating systems.
+.DS_Store
+.idea/
+.vscode/
+*.swp
