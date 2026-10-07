@@ -6,7 +6,9 @@
   "separate-pull-requests": true,
   "packages": {
     "modules/policy": {
-      "component": "policy"
+      "component": "policy",
+      "initial-version": "0.1.0"
     }
-  }
+  },
+  "bump-minor-pre-major": true
 }
