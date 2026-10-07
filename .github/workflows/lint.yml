@@ -1,0 +1,111 @@
+name: Lint
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - "**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lint-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
+        with:
+          cache: true
+
+      - name: Prepare caches
+        id: cache
+        run: |
+          mkdir -p "${RUNNER_TEMP}/terraform-plugin-cache"
+          echo "TF_PLUGIN_CACHE_DIR=${RUNNER_TEMP}/terraform-plugin-cache" >> "${GITHUB_ENV}"
+          echo "UV_CACHE_DIR=${RUNNER_TEMP}/uv-cache" >> "${GITHUB_ENV}"
+          echo "python=$(python3 --version)" >> "${GITHUB_OUTPUT}"
+
+      - name: Cache Python dependencies
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ${{ env.UV_CACHE_DIR }}
+          key: uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('uv.lock', 'mise.lock') }}
+
+      - name: Cache pre-commit environments
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ runner.os }}-${{ runner.arch }}-${{ steps.cache.outputs.python }}-${{ hashFiles('.pre-commit-config.yaml', 'mise.lock') }}
+
+      - name: Cache Terraform providers
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ${{ env.TF_PLUGIN_CACHE_DIR }}
+          key: terraform-providers-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/*.tf') }}
+          restore-keys: |
+            terraform-providers-${{ runner.os }}-${{ runner.arch }}-
+
+      - run: uv sync --locked
+
+      - run: pre-commit run --all-files --show-diff-on-failure
+
+      - run: uv run --locked pytest -m 'not integration'
+
+      - name: Run unit tests
+        run: |
+          set -euo pipefail
+          find modules -type d -path '*/tests/unit' -not -path '*/.terraform/*' | sort > "${RUNNER_TEMP}/unit-directories"
+          while read -r directory; do
+            module="${directory%/tests/unit}"
+            echo "::group::${module}"
+            terraform -chdir="${module}" init -backend=false -input=false -no-color
+            terraform -chdir="${module}" test -test-directory=tests/unit -no-color
+            echo "::endgroup::"
+          done < "${RUNNER_TEMP}/unit-directories"
+
+  minimum-version:
+    name: Minimum Terraform version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
+        with:
+          cache: true
+
+      - name: Cache Terraform providers
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ${{ runner.temp }}/terraform-plugin-cache
+          key: terraform-providers-minimum-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/*.tf') }}
+          restore-keys: |
+            terraform-providers-minimum-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Validate modules and examples
+        run: |
+          set -euo pipefail
+          export TF_PLUGIN_CACHE_DIR="${RUNNER_TEMP}/terraform-plugin-cache"
+          mkdir -p "${TF_PLUGIN_CACHE_DIR}"
+          find modules -name versions.tf -not -path '*/tests/*' -not -path '*/.terraform/*' | sort > "${RUNNER_TEMP}/module-versions"
+          while read -r file; do
+            directory="$(dirname "${file}")"
+            echo "::group::${directory}"
+            mise exec terraform@1.3.10 -- terraform -chdir="${directory}" init -backend=false -input=false -no-color
+            mise exec terraform@1.3.10 -- terraform -chdir="${directory}" validate -no-color
+            echo "::endgroup::"
+          done < "${RUNNER_TEMP}/module-versions"

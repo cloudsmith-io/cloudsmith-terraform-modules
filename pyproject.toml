@@ -1,0 +1,26 @@
+[project]
+name = "cloudsmith-terraform-module-tests"
+version = "0.0.0"
+requires-python = ">=3.13,<3.14"
+dependencies = []
+
+[dependency-groups]
+dev = [
+  "pytest>=8,<10",
+  "requests>=2.32,<3",
+  "ruff==0.16.10",
+]
+
+[tool.uv]
+python-preference = "only-system"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers --tb=short"
+markers = ["integration: creates resources in a disposable Cloudsmith workspace"]
+
+[tool.ruff]
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
