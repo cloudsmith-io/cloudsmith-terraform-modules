@@ -24,7 +24,7 @@ Because the recipe follows `master`, review upstream changes in the plan. Change
 
 | Name | Version |
 | ---- | ------- |
-| terraform | >= 1.3 |
+| terraform | >= 1.15 |
 | cloudsmith | >= 0.0.81 |
 | http | >= 3.4 |
 

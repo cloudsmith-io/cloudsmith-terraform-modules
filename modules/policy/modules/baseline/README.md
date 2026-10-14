@@ -116,7 +116,7 @@ Set `cooldown.name` and `cooldown.description` to the values in the web app, or 
 
 | Name | Version |
 | ---- | ------- |
-| terraform | >= 1.3 |
+| terraform | >= 1.15 |
 | cloudsmith | >= 0.0.81 |
 | http | >= 3.4 |
 

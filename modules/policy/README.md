@@ -86,6 +86,7 @@ Recipe downloads follow `master`, so upstream changes can appear in your next pl
 - Declare `package cloudsmith`.
 - Write a `match` rule. Cloudsmith applies the actions when `match` is true.
 - Write a `reason` set. Cloudsmith shows each reason in the **policy decision logs**, so your team can see why a package matched.
+- Set at least one action. A policy without actions only writes decision logs, so the plan shows a warning.
 
 [Rego policies](https://docs.cloudsmith.com/supply-chain-security/policy-as-code/rego) describes the policy input and the supported functions.
 
@@ -126,7 +127,7 @@ import {
 
 | Name | Version |
 | ---- | ------- |
-| terraform | >= 1.3 |
+| terraform | >= 1.15 |
 | cloudsmith | >= 0.0.81 |
 
 ## Providers

@@ -24,6 +24,13 @@ resource "cloudsmith_policy" "this" {
   }
 }
 
+check "actions" {
+  assert {
+    condition     = length(var.actions) > 0
+    error_message = "The policy \"${var.name}\" has no actions. Cloudsmith evaluates the policy and writes decision logs, but does not change matched packages."
+  }
+}
+
 resource "cloudsmith_policy_action" "this" {
   for_each = var.actions
 

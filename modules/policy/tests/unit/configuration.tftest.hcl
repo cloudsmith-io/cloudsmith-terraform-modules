@@ -13,6 +13,8 @@ run "defaults_to_no_actions" {
     condition     = length(cloudsmith_policy_action.this) == 0
     error_message = "An empty action map must not create actions."
   }
+
+  expect_failures = [check.actions]
 }
 
 run "plans_all_action_types" {
@@ -73,7 +75,7 @@ run "rejects_fractional_policy_precedence" {
     precedence = 1.5
   }
 
-  expect_failures = [var.precedence]
+  expect_failures = [var.precedence, check.actions]
 }
 
 run "rejects_fractional_action_precedence" {
@@ -117,6 +119,8 @@ run "makes_policy_without_hidden_action_not_terminal_by_default" {
     condition     = !cloudsmith_policy.this.is_terminal
     error_message = "A policy without a HIDDEN action must not be terminal by default."
   }
+
+  expect_failures = [check.actions]
 }
 
 run "rejects_hidden_action_when_api_does_not_recognize_cooldown" {

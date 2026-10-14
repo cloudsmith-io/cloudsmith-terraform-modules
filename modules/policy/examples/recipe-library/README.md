@@ -30,7 +30,7 @@ Use a test workspace without an existing cooldown policy. Even a disabled cooldo
 
 | Name | Version |
 | ---- | ------- |
-| terraform | >= 1.3 |
+| terraform | >= 1.15 |
 | cloudsmith | >= 0.0.81 |
 | http | >= 3.4 |
 

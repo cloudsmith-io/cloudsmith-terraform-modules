@@ -17,7 +17,7 @@ The policies are enabled immediately and can hide or quarantine packages. Set `e
 
 | Name | Version |
 | ---- | ------- |
-| terraform | >= 1.3 |
+| terraform | >= 1.15 |
 | cloudsmith | >= 0.0.81 |
 
 ## Modules
