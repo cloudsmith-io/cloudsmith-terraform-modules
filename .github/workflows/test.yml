@@ -37,12 +37,12 @@ jobs:
           persist-credentials: false
 
       # The action exports the API key as CLOUDSMITH_API_KEY for the Terraform provider.
-      - uses: cloudsmith-io/cloudsmith-cli-action@92b1383b22bbd36d804b858f273abcdf4d349f6b # v3.2.1
+      - uses: cloudsmith-io/cloudsmith-cli-action@16c782c5f3eeea2259957aa17218093d85fdcecd # v3.2.4
         with:
           api-key: ${{ secrets.CLOUDSMITH_TEST_API_KEY }}
           export-auth-token: true
 
-      - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+      - uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
         with:
           cache: true
 
